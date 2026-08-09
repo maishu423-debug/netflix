@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.pool import NullPool
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
@@ -20,7 +19,23 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, poolclass=NullPool)
+# NullPool (the previous config here) opens a brand-new TCP connection for
+# every single query and closes it immediately after — fine for a handful
+# of calls, but pipeline steps like resolve_titles hit the DB twice per
+# title across ~700 titles, which meant 1000+ fresh connections in quick
+# succession and eventually a connection attempt timing out under that
+# churn. A real pool (SQLAlchemy's default QueuePool) reuses a small set
+# of connections instead. pool_pre_ping checks a connection is still alive
+# before handing it out (handles Postgres/network dropping idle
+# connections); pool_recycle forces a refresh before Railway's internal
+# network has a chance to kill a long-idle connection on its own.
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,
+    max_overflow=10,
+    pool_pre_ping=True,
+    pool_recycle=280,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ground_truth (

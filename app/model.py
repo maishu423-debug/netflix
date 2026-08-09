@@ -171,7 +171,6 @@ class PlackettLuceRanker:
 
     @classmethod
     def load_latest_from_db(cls) -> "PlackettLuceRanker":
-        import json
         import numpy as np
         from sqlalchemy import text
         import db
@@ -182,10 +181,12 @@ class PlackettLuceRanker:
             ).fetchone()
         if row is None:
             raise ValueError("No trained model found in model_weights table yet.")
-        m = cls(feature_cols=json.loads(row[0]), l2=row[4])
-        m.w_ = np.array(json.loads(row[1]))
-        m.mean_ = np.array(json.loads(row[2]))
-        m.std_ = np.array(json.loads(row[3]))
+        # JSONB columns come back already deserialized (list/dict), not as
+        # raw JSON strings — no json.loads() needed here.
+        m = cls(feature_cols=row[0], l2=row[4])
+        m.w_ = np.array(row[1])
+        m.mean_ = np.array(row[2])
+        m.std_ = np.array(row[3])
         return m
 
 

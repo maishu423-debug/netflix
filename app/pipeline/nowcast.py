@@ -63,8 +63,8 @@ def run(today: date | None = None) -> dict:
                 scored = feats.sort_values("p_number_one", ascending=False)
                 model_rows = scored[["title", "p_number_one", "share", "momentum",
                                       "share_wow", "previous_rank", "is_new"]].to_dict("records")
-            except ValueError:
-                pass  # no trained model yet
+            except Exception:
+                pass  # no usable trained model yet — fall through to the TMDb fallback below
 
     fallback_rows = []
     if days_with_data < MIN_DAYS_FOR_MODEL or not model_rows:

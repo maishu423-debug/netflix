@@ -1,0 +1,14 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+apscheduler>=3.10
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
+requests>=2.28
+openpyxl>=3.1
+httpx>=0.27
+cryptography>=42.0
+gspread>=6.0
+google-auth>=2.29

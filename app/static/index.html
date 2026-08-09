@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Netflix #1 — Model vs Kalshi</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #131b2e; --border: #1f2b45;
+    --text: #e8ecf5; --muted: #8a93a8; --accent: #3b82f6; --green: #22c55e; --red: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  .layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; overflow: hidden;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .yes { color: var(--green); font-weight: 600; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .buttons { display: flex; gap: 10px; margin-top: 16px; }
+  button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .status-line { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 11px; margin-left: 8px; }
+  .badge.model { background: rgba(59,130,246,0.15); color: var(--accent); }
+  .badge.fallback { background: rgba(234,179,8,0.15); color: #eab308; }
+  .empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+  <h1 id="headline">Loading market…</h1>
+  <div class="subtitle" id="subtitle"></div>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>Kalshi Market Ladder</h2>
+      <table>
+        <thead><tr><th>Title</th><th class="num">Yes Bid</th><th class="num">Yes Ask</th><th class="num">Volume</th></tr></thead>
+        <tbody id="ladder-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Our Prediction <span id="pred-badge"></span></h2>
+      <table>
+        <thead><tr><th>Title</th><th class="num">P(#1)</th></tr></thead>
+        <tbody id="prediction-body"></tbody>
+      </table>
+      <div class="note" id="prediction-note"></div>
+
+      <div class="buttons">
+        <button id="btn-weekly" onclick="trigger('weekly')">Update Weekly</button>
+        <button id="btn-monthly" class="secondary" onclick="trigger('monthly')">Update Monthly</button>
+      </div>
+      <div class="status-line" id="status-line"></div>
+    </div>
+  </div>
+
+<script>
+async function loadMarket() {
+  try {
+    const res = await fetch('/api/market');
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('headline').textContent = data.error;
+      document.getElementById('ladder-body').innerHTML = '<tr><td colspan="4" class="empty">No open market right now</td></tr>';
+      return;
+    }
+    document.getElementById('headline').textContent = data.headline;
+    document.getElementById('subtitle').textContent = (data.subtitle || '') + '  ·  ' + data.event_ticker;
+    const body = document.getElementById('ladder-body');
+    body.innerHTML = data.rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.title)}</td>
+        <td class="num yes">${r.yes_bid != null ? r.yes_bid.toFixed(0) + '¢' : '—'}</td>
+        <td class="num">${r.yes_ask != null ? r.yes_ask.toFixed(0) + '¢' : '—'}</td>
+        <td class="num">${r.volume != null ? Math.round(r.volume) : '—'}</td>
+      </tr>`).join('');
+  } catch (e) {
+    document.getElementById('headline').textContent = 'Failed to load market data';
+  }
+}
+
+async function loadPrediction() {
+  try {
+    const res = await fetch('/api/prediction');
+    const data = await res.json();
+    const body = document.getElementById('prediction-body');
+    const badge = document.getElementById('pred-badge');
+    const note = document.getElementById('prediction-note');
+
+    if (data.model && data.model.length > 0) {
+      badge.innerHTML = '<span class="badge model">trained model</span>';
+      body.innerHTML = data.model.map(r => `
+        <tr><td>${escapeHtml(r.title)}</td><td class="num">${(r.p_number_one * 100).toFixed(1)}%</td></tr>
+      `).join('');
+      note.textContent = `${data.days_with_data} day(s) of pageview data this week.`;
+    } else if (data.fallback && data.fallback.length > 0) {
+      badge.innerHTML = '<span class="badge fallback">TMDb fallback</span>';
+      const maxPop = Math.max(...data.fallback.map(r => r.popularity || 0)) || 1;
+      body.innerHTML = data.fallback.map(r => `
+        <tr><td>${escapeHtml(r.title)}</td><td class="num">${((r.popularity / maxPop) * 100).toFixed(0)}% rel.</td></tr>
+      `).join('');
+      note.textContent = 'Trained model has too little data yet (early in the week) — showing same-day TMDb popularity as a rough stand-in instead.';
+    } else {
+      body.innerHTML = '<tr><td colspan="2" class="empty">No candidates yet — try Update Weekly</td></tr>';
+      note.textContent = '';
+    }
+  } catch (e) {
+    document.getElementById('prediction-body').innerHTML = '<tr><td colspan="2" class="empty">Failed to load prediction</td></tr>';
+  }
+}
+
+async function trigger(kind) {
+  const btn = document.getElementById('btn-' + kind);
+  const statusLine = document.getElementById('status-line');
+  btn.disabled = true;
+  statusLine.textContent = `${kind} update running in the background…`;
+
+  await fetch(`/api/trigger/${kind}`, { method: 'POST' });
+
+  // Poll job status until it's done
+  const poll = setInterval(async () => {
+    const res = await fetch('/api/jobs/latest');
+    const jobs = await res.json();
+    const job = jobs[kind];
+    if (job && job.status !== 'running') {
+      clearInterval(poll);
+      statusLine.textContent = `${kind}: ${job.status} at ${new Date(job.finished_at).toLocaleTimeString()}`;
+      btn.disabled = false;
+      loadMarket();
+      loadPrediction();
+    }
+  }, 3000);
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+loadMarket();
+loadPrediction();
+setInterval(loadMarket, 20000);
+setInterval(loadPrediction, 60000);
+</script>
+</body>
+</html>

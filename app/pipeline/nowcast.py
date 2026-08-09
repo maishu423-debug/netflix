@@ -61,8 +61,15 @@ def run(today: date | None = None) -> dict:
                 model = PlackettLuceRanker.load_latest_from_db()
                 feats["p_number_one"] = model.predict_proba(feats)
                 scored = feats.sort_values("p_number_one", ascending=False)
-                model_rows = scored[["title", "p_number_one", "share", "momentum",
-                                      "share_wow", "previous_rank", "is_new"]].to_dict("records")
+                scored = scored[["title", "p_number_one", "share", "momentum",
+                                  "share_wow", "previous_rank", "is_new"]]
+                # previous_rank is legitimately NaN for brand-new titles (no
+                # prior week to have a rank in) — that's valid data, but
+                # strict JSON (which FastAPI/Starlette enforce) doesn't allow
+                # a literal NaN value, only null. Swap NaN -> None so it
+                # serializes as JSON null instead of crashing the response.
+                scored = scored.astype(object).where(scored.notna(), None)
+                model_rows = scored.to_dict("records")
             except Exception:
                 pass  # no usable trained model yet — fall through to the TMDb fallback below
 
@@ -72,9 +79,9 @@ def run(today: date | None = None) -> dict:
         if ids:
             snap = tmdb.snapshot_popularity(ids)
             if not snap.empty:
-                fallback_rows = snap.sort_values("popularity", ascending=False)[
-                    ["title", "popularity"]
-                ].to_dict("records")
+                fb = snap.sort_values("popularity", ascending=False)[["title", "popularity"]]
+                fb = fb.astype(object).where(fb.notna(), None)
+                fallback_rows = fb.to_dict("records")
 
     result = {
         "week_start": str(week), "days_with_data": days_with_data,

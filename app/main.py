@@ -98,15 +98,23 @@ def run_monthly_job() -> None:
 
 
 def run_daily_snapshot_job() -> None:
-    """Logs prediction + Kalshi price to the sheet once a day, independent of the weekly refresh."""
+    """
+    Refreshes candidates + logs prediction/Kalshi to the sheet, once a day.
+    Refreshing candidates here (not just in the weekly job) matters: a
+    title premiering mid-week would otherwise stay invisible to
+    /api/prediction until the next Tuesday auto-run — exactly the kind
+    of same-week breakout this dashboard exists to catch.
+    """
     job_id = _job_start("daily_snapshot")
     try:
+        cand_result = build_candidates.run()
         result = nowcast.run()
         ladder = kalshi_client.get_current_ladder()
         ladder_rows = [{"title": r.title, "yes_bid": r.yes_bid, "yes_ask": r.yes_ask} for r in ladder.rows] if ladder else []
         prediction_rows = result.get("model") or result.get("fallback") or []
         sheets_client.log_snapshot(result["week_start"], prediction_rows, ladder_rows)
-        _job_finish(job_id, "success", f"Logged {len(prediction_rows)} rows.")
+        _job_finish(job_id, "success",
+                    f"candidates: {cand_result}\nLogged {len(prediction_rows)} rows.")
     except Exception:
         _job_finish(job_id, "failed", traceback.format_exc())
 

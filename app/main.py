@@ -8,7 +8,7 @@ the same process and the same DB connection pool.
 
 from __future__ import annotations
 
-import time
+import asyncio
 import traceback
 from datetime import date, datetime, timezone
 
@@ -21,15 +21,12 @@ from sqlalchemy import text
 
 import db
 import kalshi_client
+import kalshi_ws
 import sheets_client
 from pipeline import build_candidates, build_features, download_attention
 from pipeline import ground_truth, nowcast, resolve_titles, train_model
 
 app = FastAPI()
-
-# ---- simple in-memory cache for the Kalshi ladder (avoid hammering their API on every poll) ----
-_market_cache = {"data": None, "fetched_at": 0}
-MARKET_CACHE_TTL_SECONDS = 20
 
 
 def _job_start(job_name: str) -> int:
@@ -127,9 +124,10 @@ scheduler.add_job(run_daily_snapshot_job, CronTrigger(hour=13, minute=0), id="da
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
     db.init_schema()
     scheduler.start()
+    asyncio.create_task(kalshi_ws.run_forever())
 
 
 @app.on_event("shutdown")
@@ -141,26 +139,7 @@ def shutdown():
 
 @app.get("/api/market")
 def api_market():
-    now = time.time()
-    if _market_cache["data"] is not None and now - _market_cache["fetched_at"] < MARKET_CACHE_TTL_SECONDS:
-        return _market_cache["data"]
-
-    ladder = kalshi_client.get_current_ladder()
-    if ladder is None:
-        data = {"error": "No open market found."}
-    else:
-        data = {
-            "headline": ladder.headline,
-            "subtitle": ladder.subtitle,
-            "event_ticker": ladder.event_ticker,
-            "rows": [
-                {"title": r.title, "yes_bid": r.yes_bid, "yes_ask": r.yes_ask, "volume": r.volume}
-                for r in ladder.rows
-            ],
-        }
-    _market_cache["data"] = data
-    _market_cache["fetched_at"] = now
-    return data
+    return kalshi_ws.get_market_snapshot()
 
 
 @app.get("/api/prediction")

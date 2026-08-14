@@ -168,6 +168,22 @@ def weekly_features(panel: pd.DataFrame, as_of: date | None = None) -> pd.DataFr
     if as_of is not None:
         df = df[df["day"] <= as_of]
 
+    # Wikipedia's pageviews API lags 1-2 days behind real time. An
+    # unreported day gets backfilled as 0 views by fetch_pageviews,
+    # indistinguishable at a glance from a genuinely quiet day — which
+    # meant live nowcasting's `momentum` always computed to exactly 0
+    # (today's unreported row was always the "last day"). Detect the
+    # true cutoff as the most recent day where at least one article in
+    # the whole candidate set has nonzero views — with several titles
+    # tracked at once, a day that's actually been reported will
+    # essentially always show up as nonzero for someone. This has no
+    # effect on completed historical weeks (training/backtest), where
+    # every day already has real data by the time it's used.
+    daily_totals = df.groupby("day")["views"].sum()
+    reported_days = daily_totals[daily_totals > 0].index
+    if len(reported_days):
+        df = df[df["day"] <= reported_days.max()]
+
     g = df.groupby(["week", "article"])["views"]
     out = g.agg(total="sum", peak="max", n_days="count").reset_index()
     out["share"] = out["total"] / out.groupby("week")["total"].transform("sum")

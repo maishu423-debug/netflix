@@ -153,6 +153,39 @@ def search_tv(title: str, year: int | None = None) -> int | None:
     return data["results"][0]["id"]
 
 
+# Standard TMDb TV genre IDs (verified against developers.themoviedb.org's
+# /genre/tv/list — the same list across every third-party confirmation).
+EXCLUDED_TV_GENRES = {
+    99: "Documentary",
+    10763: "News",
+    10767: "Talk",
+}
+
+
+def get_tv_genre_ids(title: str, year: int | None = None) -> list[int] | None:
+    """
+    Genre IDs for a title's best TMDb match. Uses genre_ids already
+    present on the /search/tv result — no extra API call needed. Returns
+    None if no TMDb match was found at all (distinct from an empty list,
+    which means a match was found but it has no genres tagged).
+    """
+    params = {"query": title}
+    if year:
+        params["first_air_date_year"] = year
+    data = _get("/search/tv", params)
+    if not data or not data.get("results"):
+        return None
+    return data["results"][0].get("genre_ids", [])
+
+
+def is_excluded_genre(title: str, year: int | None = None) -> bool:
+    """True if the title's TMDb genres include Documentary/News/Talk."""
+    genre_ids = get_tv_genre_ids(title, year=year)
+    if genre_ids is None:
+        return False  # no TMDb match at all — don't exclude on absence of evidence
+    return any(g in EXCLUDED_TV_GENRES for g in genre_ids)
+
+
 def resolve_tmdb_ids(titles: list[str]) -> dict[str, int]:
     """
     Cached title -> tmdb_id lookup. Misses are retried every call (cheap

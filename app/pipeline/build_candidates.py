@@ -78,17 +78,27 @@ def _resolve_with_fallback(display_title: str, normalized_title: str, overrides:
     return None
 
 
-def _build_from_kalshi(today: date, week_start: date) -> dict[str, str | None] | None:
+def _build_from_kalshi(today: date, week_start: date) -> tuple[dict[str, str | None], list[str]]:
+    """Returns (resolved_candidates, excluded_titles) — excluded ones never reach the model at all."""
     ladder = kalshi_client.get_current_ladder()
     if ladder is None or not ladder.rows:
-        return None
+        return None, []
 
     overrides = attention.load_overrides()
     resolved: dict[str, str | None] = {}
+    excluded: list[str] = []
     for row in ladder.rows:
         normalized = normalize_kalshi_title(row.title)
+        # Genre filter first — no point resolving a Wikipedia article for
+        # something we're about to throw away anyway. This is what
+        # excludes documentaries (e.g. MOURINHO) that Kalshi's own market
+        # lists but that Netflix's chart definition doesn't distinguish
+        # from scripted/reality shows on its own.
+        if tmdb.is_excluded_genre(normalized, year=today.year):
+            excluded.append(row.title)
+            continue
         resolved[normalized] = _resolve_with_fallback(row.title, normalized, overrides, today)
-    return resolved
+    return resolved, excluded
 
 
 def _build_from_tmdb_fallback(today: date, week_start: date, week_end: date) -> dict[str, str | None]:
@@ -121,10 +131,11 @@ def run(today: date | None = None) -> dict:
     week_start = attention.netflix_week(today)
     week_end = week_start + timedelta(days=6)
 
-    resolved = _build_from_kalshi(today, week_start)
+    resolved, excluded_by_genre = _build_from_kalshi(today, week_start)
     source = "kalshi_ladder"
     if resolved is None:
         resolved = _build_from_tmdb_fallback(today, week_start, week_end)
+        excluded_by_genre = []
         source = "tmdb_fallback"
 
     with db.engine.begin() as conn:
@@ -138,7 +149,8 @@ def run(today: date | None = None) -> dict:
     unresolved = [t for t, a in resolved.items() if not a]
     return {
         "week_start": str(week_start), "week_end": str(week_end),
-        "source": source, "total_candidates": len(resolved), "unresolved": unresolved,
+        "source": source, "total_candidates": len(resolved),
+        "unresolved": unresolved, "excluded_by_genre": excluded_by_genre,
     }
 
 

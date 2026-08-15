@@ -78,27 +78,34 @@ def _resolve_with_fallback(display_title: str, normalized_title: str, overrides:
     return None
 
 
-def _build_from_kalshi(today: date, week_start: date) -> tuple[dict[str, str | None], list[str]]:
-    """Returns (resolved_candidates, excluded_titles) — excluded ones never reach the model at all."""
+def _build_from_kalshi(today: date, week_start: date) -> dict[str, str | None] | None:
+    """
+    Full parity with Kalshi's ladder — every row becomes a candidate, no
+    exceptions. Confirmed directly from Netflix's own published
+    methodology (about.netflix.com) that the 'TV' category has no genre
+    or format restriction — only 'is this a series rather than a film'.
+    Independent analysis of the real historical data confirms
+    documentaries, competition shows, and specials are a normal, routine
+    presence on the actual chart, not edge cases. Kalshi's ladder mirrors
+    that same flat definition. So there is nothing for us to curate here
+    — anything WE exclude that Kalshi/Netflix wouldn't have excluded is
+    us silently deciding we know the target definition better than the
+    two authoritative sources actually setting it.
+
+    A title still not becoming a scorable candidate is only ever a
+    TECHNICAL limitation (no Wikipedia article could be resolved for it)
+    never a deliberate editorial choice on our part.
+    """
     ladder = kalshi_client.get_current_ladder()
     if ladder is None or not ladder.rows:
-        return None, []
+        return None
 
     overrides = attention.load_overrides()
     resolved: dict[str, str | None] = {}
-    excluded: list[str] = []
     for row in ladder.rows:
         normalized = normalize_kalshi_title(row.title)
-        # Genre filter first — no point resolving a Wikipedia article for
-        # something we're about to throw away anyway. This is what
-        # excludes documentaries (e.g. MOURINHO) that Kalshi's own market
-        # lists but that Netflix's chart definition doesn't distinguish
-        # from scripted/reality shows on its own.
-        if tmdb.is_excluded_genre(normalized, year=today.year):
-            excluded.append(row.title)
-            continue
         resolved[normalized] = _resolve_with_fallback(row.title, normalized, overrides, today)
-    return resolved, excluded
+    return resolved
 
 
 def _build_from_tmdb_fallback(today: date, week_start: date, week_end: date) -> dict[str, str | None]:
@@ -131,11 +138,10 @@ def run(today: date | None = None) -> dict:
     week_start = attention.netflix_week(today)
     week_end = week_start + timedelta(days=6)
 
-    resolved, excluded_by_genre = _build_from_kalshi(today, week_start)
+    resolved = _build_from_kalshi(today, week_start)
     source = "kalshi_ladder"
     if resolved is None:
         resolved = _build_from_tmdb_fallback(today, week_start, week_end)
-        excluded_by_genre = []
         source = "tmdb_fallback"
 
     with db.engine.begin() as conn:
@@ -149,8 +155,7 @@ def run(today: date | None = None) -> dict:
     unresolved = [t for t, a in resolved.items() if not a]
     return {
         "week_start": str(week_start), "week_end": str(week_end),
-        "source": source, "total_candidates": len(resolved),
-        "unresolved": unresolved, "excluded_by_genre": excluded_by_genre,
+        "source": source, "total_candidates": len(resolved), "unresolved": unresolved,
     }
 
 

@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS title_resolution (
 
 CREATE TABLE IF NOT EXISTS overrides (
     title   TEXT PRIMARY KEY,
-    article TEXT NOT NULL
+    article TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pageviews (
@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS job_runs (
     status      TEXT NOT NULL DEFAULT 'running',
     log         TEXT
 );
+
+ALTER TABLE overrides ALTER COLUMN article DROP NOT NULL;
 """
 
 

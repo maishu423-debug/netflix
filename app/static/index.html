@@ -112,6 +112,12 @@ async function loadPrediction() {
         <tr><td>${escapeHtml(r.title)}</td><td class="num">${(r.p_number_one * 100).toFixed(1)}%</td></tr>
       `).join('');
       note.textContent = `${data.days_with_data} day(s) of pageview data this week.`;
+    } else if (data.fallback && data.fallback.length > 0 && data.fallback_source === 'daily_manual') {
+      badge.innerHTML = '<span class="badge fallback">Daily Top 10 (manual)</span>';
+      body.innerHTML = data.fallback.map(r => `
+        <tr><td>${escapeHtml(r.title)}</td><td class="num">#${r.daily_best_rank_this_week}</td></tr>
+      `).join('');
+      note.textContent = 'Trained model has too little pageview data yet (early in the week) — showing your manually-logged daily Top 10 position instead.';
     } else if (data.fallback && data.fallback.length > 0) {
       badge.innerHTML = '<span class="badge fallback">TMDb fallback</span>';
       const maxPop = Math.max(...data.fallback.map(r => r.popularity || 0)) || 1;

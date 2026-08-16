@@ -92,19 +92,40 @@ def run(today: date | None = None) -> dict:
             except Exception:
                 pass  # no usable trained model yet — fall through to the TMDb fallback below
 
+    # A daily rank is already an ordering — usable as a fallback signal
+    # immediately, unlike the trained model's coefficients, which need
+    # weeks of history to fit. It beats TMDb's popularity fallback
+    # whenever it's available: it's the real Netflix ranking, not a
+    # generic popularity proxy.
+    daily_rows = []
+    if daily_best_rank:
+        candidate_titles = set(candidates.keys())
+        daily_rows = sorted(
+            ({"title": t, "daily_best_rank_this_week": r}
+             for t, r in daily_best_rank.items() if t in candidate_titles),
+            key=lambda r: r["daily_best_rank_this_week"],
+        )
+
     fallback_rows = []
+    fallback_source = None
     if days_with_data < MIN_DAYS_FOR_MODEL or not model_rows:
-        ids = tmdb.resolve_tmdb_ids(list(candidates.keys()))
-        if ids:
-            snap = tmdb.snapshot_popularity(ids)
-            if not snap.empty:
-                fb = snap.sort_values("popularity", ascending=False)[["title", "popularity"]]
-                fb = fb.astype(object).where(fb.notna(), None)
-                fallback_rows = fb.to_dict("records")
+        if daily_rows:
+            fallback_rows = daily_rows
+            fallback_source = "daily_manual"
+        else:
+            ids = tmdb.resolve_tmdb_ids(list(candidates.keys()))
+            if ids:
+                snap = tmdb.snapshot_popularity(ids)
+                if not snap.empty:
+                    fb = snap.sort_values("popularity", ascending=False)[["title", "popularity"]]
+                    fb = fb.astype(object).where(fb.notna(), None)
+                    fallback_rows = fb.to_dict("records")
+                    if fallback_rows:
+                        fallback_source = "tmdb_popularity"
 
     result = {
         "week_start": str(week), "days_with_data": days_with_data,
-        "model": model_rows, "fallback": fallback_rows,
+        "model": model_rows, "fallback": fallback_rows, "fallback_source": fallback_source,
     }
 
     with db.engine.begin() as conn:

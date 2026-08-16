@@ -59,6 +59,27 @@ def _get_worksheet():
     return ws
 
 
+DAILY_TOP10_HEADER = ["date", "rank", "title"]
+
+
+def read_daily_top10() -> list[dict]:
+    """
+    Reads the 'daily_top10_manual' worksheet — date/rank/title rows you
+    type in by hand off the Netflix app's own Top 10 shelf (which updates
+    daily; Netflix's official bulk export is weekly-only). Creates the
+    sheet with a header row on first call if it doesn't exist yet.
+    """
+    gc = _get_client()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        ws = sh.worksheet("daily_top10_manual")
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title="daily_top10_manual", rows=1000, cols=len(DAILY_TOP10_HEADER))
+        ws.append_row(DAILY_TOP10_HEADER)
+        return []
+    return ws.get_all_records()
+
+
 def log_snapshot(week_start, prediction_rows: list[dict], ladder_rows: list[dict]) -> None:
     """
     prediction_rows: our model's output, list of {title, p_number_one}, ranked.

@@ -25,6 +25,22 @@ def _previous_rank_map(gt: pd.DataFrame, before: date) -> dict:
     return dict(zip(sub["show_title"], sub["rank"]))
 
 
+def _daily_best_rank_map(week_start: date, today: date) -> dict:
+    """
+    Best (lowest) rank each title has hit so far this week in the
+    manually-entered daily_top10 table (see sync_daily_top10.py) —
+    display-only for now, not a trained model feature, since it can't be
+    backfilled for past weeks to retrain against.
+    """
+    with db.engine.begin() as conn:
+        rows = conn.execute(
+            text("SELECT title, MIN(rank) AS best_rank FROM daily_top10 "
+                 "WHERE day BETWEEN :ws AND :today GROUP BY title"),
+            {"ws": week_start, "today": today},
+        ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def run(today: date | None = None) -> dict:
     today = today or date.today()
     week = attention.netflix_week(today)
@@ -37,6 +53,7 @@ def run(today: date | None = None) -> dict:
     gt = ground_truth.load_from_db()
     prev_rank = _previous_rank_map(gt, before=week)
     seen_ever = set(gt["show_title"].unique())
+    daily_best_rank = _daily_best_rank_map(week, today)
 
     lookback_start = week - timedelta(days=7)
     panel = attention.fetch_many(candidates.values(), lookback_start, today)
@@ -51,6 +68,7 @@ def run(today: date | None = None) -> dict:
         feats["title"] = feats["article"].map(rev)
         feats["previous_rank"] = feats["title"].map(prev_rank)
         feats["is_new"] = ~feats["title"].isin(seen_ever)
+        feats["daily_best_rank_this_week"] = feats["title"].map(daily_best_rank)
         feats = add_derived_features(feats)
         feats["share_wow"] = feats["share_wow"].fillna(0)
         feats["momentum"] = feats["momentum"].fillna(0)
@@ -62,7 +80,8 @@ def run(today: date | None = None) -> dict:
                 feats["p_number_one"] = model.predict_proba(feats)
                 scored = feats.sort_values("p_number_one", ascending=False)
                 scored = scored[["title", "p_number_one", "share", "momentum",
-                                  "share_wow", "previous_rank", "is_new"]]
+                                  "share_wow", "previous_rank", "is_new",
+                                  "daily_best_rank_this_week"]]
                 # previous_rank is legitimately NaN for brand-new titles (no
                 # prior week to have a rank in) — that's valid data, but
                 # strict JSON (which FastAPI/Starlette enforce) doesn't allow

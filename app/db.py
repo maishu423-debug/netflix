@@ -117,6 +117,13 @@ CREATE TABLE IF NOT EXISTS tmdb_popularity (
     PRIMARY KEY (tmdb_id, day)
 );
 
+CREATE TABLE IF NOT EXISTS daily_top10 (
+    day   DATE NOT NULL,
+    rank  INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    PRIMARY KEY (day, rank)
+);
+
 CREATE TABLE IF NOT EXISTS job_runs (
     id          SERIAL PRIMARY KEY,
     job_name    TEXT NOT NULL,

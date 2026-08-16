@@ -24,7 +24,7 @@ import kalshi_client
 import kalshi_ws
 import sheets_client
 from pipeline import build_candidates, build_features, download_attention
-from pipeline import ground_truth, nowcast, resolve_titles, train_model
+from pipeline import ground_truth, nowcast, resolve_titles, sync_daily_top10, train_model
 
 app = FastAPI()
 
@@ -105,13 +105,18 @@ def run_daily_snapshot_job() -> None:
     job_id = _job_start("daily_snapshot")
     try:
         cand_result = build_candidates.run()
+        try:
+            sync_result = sync_daily_top10.run()
+        except Exception as e:
+            sync_result = f"failed (non-fatal): {e}"
         result = nowcast.run()
         ladder = kalshi_client.get_current_ladder()
         ladder_rows = [{"title": r.title, "yes_bid": r.yes_bid, "yes_ask": r.yes_ask} for r in ladder.rows] if ladder else []
         prediction_rows = result.get("model") or result.get("fallback") or []
         sheets_client.log_snapshot(result["week_start"], prediction_rows, ladder_rows)
         _job_finish(job_id, "success",
-                    f"candidates: {cand_result}\nLogged {len(prediction_rows)} rows.")
+                    f"candidates: {cand_result}\ndaily_top10 sync: {sync_result}\n"
+                    f"Logged {len(prediction_rows)} rows.")
     except Exception:
         _job_finish(job_id, "failed", traceback.format_exc())
 

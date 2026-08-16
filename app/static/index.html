@@ -42,6 +42,7 @@
   .badge.model { background: rgba(59,130,246,0.15); color: var(--accent); }
   .badge.fallback { background: rgba(234,179,8,0.15); color: #eab308; }
   .empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+  .daily-tag { color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -109,7 +110,7 @@ async function loadPrediction() {
     if (data.model && data.model.length > 0) {
       badge.innerHTML = '<span class="badge model">trained model</span>';
       body.innerHTML = data.model.map(r => `
-        <tr><td>${escapeHtml(r.title)}</td><td class="num">${(r.p_number_one * 100).toFixed(1)}%</td></tr>
+        <tr><td>${escapeHtml(r.title)}${r.daily_best_rank_this_week != null ? ` <span class="daily-tag">today #${r.daily_best_rank_this_week}</span>` : ''}</td><td class="num">${(r.p_number_one * 100).toFixed(1)}%</td></tr>
       `).join('');
       note.textContent = `${data.days_with_data} day(s) of pageview data this week.`;
     } else if (data.fallback && data.fallback.length > 0 && data.fallback_source === 'daily_manual') {

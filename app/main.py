@@ -51,6 +51,10 @@ def _run_weekly_chain() -> str:
     log.append(f"ground_truth: {ground_truth.run()}")
     log.append(f"resolve_titles: {resolve_titles.run()}")
     log.append(f"build_candidates: {build_candidates.run()}")
+    try:
+        log.append(f"sync_daily_top10: {sync_daily_top10.run()}")
+    except Exception as e:
+        log.append(f"sync_daily_top10 failed (non-fatal): {e}")
     result = nowcast.run()
     log.append(f"nowcast: {result.get('week_start')}, "
                f"{len(result.get('model', []))} model rows, "

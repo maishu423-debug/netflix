@@ -28,6 +28,8 @@ def _resolution_map() -> dict[str, str]:
 def _build_week_features(candidate_articles: dict[str, str], week_start, week_end, as_of) -> pd.DataFrame:
     lookback_start = week_start - timedelta(days=7)
     panel = attention.fetch_many(candidate_articles.values(), lookback_start, as_of)
+    baselines = attention.fetch_baselines(candidate_articles.values(), lookback_start)
+    panel = attention.apply_baseline(panel, baselines)
     feats = attention.weekly_features(panel, as_of=as_of)
     if feats.empty:
         return feats

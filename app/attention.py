@@ -160,6 +160,42 @@ def netflix_week(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+BASELINE_WINDOW_DAYS = 90
+
+
+def fetch_baselines(articles: Iterable[str], before: date,
+                     window_days: int = BASELINE_WINDOW_DAYS, max_workers: int = 8) -> dict[str, float]:
+    """
+    Per-article typical daily views in the window strictly before the
+    current tracking window starts — median, not mean, so a page that
+    was genuinely hot for a week or two within that window doesn't drag
+    its own baseline up much. Nets out traffic a page would have gotten
+    anyway (an ongoing news story, a famous person's own fame — see
+    MOURINHO resolving to Jose Mourinho's own Wikipedia article) from
+    traffic actually driven by this week's Netflix performance. An
+    article with no cached history before `before` gets 0.0 — nothing
+    to net out yet, so its raw views count in full.
+    """
+    start = before - timedelta(days=window_days)
+    end = before - timedelta(days=1)
+    if end < start:
+        return {}
+    panel = fetch_many(articles, start, end, max_workers=max_workers)
+    if panel.empty:
+        return {}
+    return panel.groupby("article")["views"].median().to_dict()
+
+
+def apply_baseline(panel: pd.DataFrame, baselines: dict[str, float]) -> pd.DataFrame:
+    """Nets each article's baseline (see fetch_baselines) out of its daily views, floored at 0."""
+    if panel.empty:
+        return panel
+    df = panel.copy()
+    baseline_col = df["article"].map(baselines).fillna(0.0)
+    df["views"] = (df["views"] - baseline_col).clip(lower=0)
+    return df
+
+
 def weekly_features(panel: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame:
     df = panel.copy()
     if df.empty:

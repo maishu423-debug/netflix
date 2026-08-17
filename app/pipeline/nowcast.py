@@ -57,6 +57,8 @@ def run(today: date | None = None) -> dict:
 
     lookback_start = week - timedelta(days=7)
     panel = attention.fetch_many(candidates.values(), lookback_start, today)
+    baselines = attention.fetch_baselines(candidates.values(), lookback_start)
+    panel = attention.apply_baseline(panel, baselines)
     feats = attention.weekly_features(panel, as_of=today)
     feats = feats[feats["week"] == week].copy() if not feats.empty else feats
 

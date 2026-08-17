@@ -131,6 +131,19 @@ CREATE TABLE IF NOT EXISTS news_volume (
     PRIMARY KEY (title, day)
 );
 
+CREATE TABLE IF NOT EXISTS youtube_video_id (
+    title    TEXT PRIMARY KEY,
+    video_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS youtube_views (
+    video_id   TEXT NOT NULL,
+    day        DATE NOT NULL,
+    title      TEXT,
+    view_count BIGINT,
+    PRIMARY KEY (video_id, day)
+);
+
 CREATE TABLE IF NOT EXISTS job_runs (
     id          SERIAL PRIMARY KEY,
     job_name    TEXT NOT NULL,

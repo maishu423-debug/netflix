@@ -17,6 +17,7 @@ from sqlalchemy import text
 import attention
 import db
 import gdelt
+import youtube
 from pipeline import ground_truth
 
 
@@ -47,6 +48,11 @@ def _build_week_features(candidate_articles: dict[str, str], week_start, week_en
     # further code changes needed later.
     news_feats = gdelt.weekly_news_features(candidate_articles.keys(), week_start, as_of)
     feats = feats.merge(news_feats, on="title", how="left")
+    # Same read-only, forward-accumulating treatment for trailer growth
+    # (see youtube.py) — not backfillable, so also empty for nearly all
+    # historical weeks today.
+    yt_growth = youtube.load_cached_growth(candidate_articles.keys(), lookback_start, as_of)
+    feats["yt_view_growth"] = feats["title"].map(yt_growth)
     return feats
 
 

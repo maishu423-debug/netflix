@@ -24,7 +24,8 @@ import kalshi_client
 import kalshi_ws
 import sheets_client
 from pipeline import build_candidates, build_features, download_attention
-from pipeline import ground_truth, nowcast, resolve_titles, sync_daily_top10, sync_news_volume, train_model
+from pipeline import ground_truth, nowcast, resolve_titles
+from pipeline import sync_daily_top10, sync_news_volume, sync_youtube, train_model
 
 app = FastAPI()
 
@@ -59,6 +60,10 @@ def _run_weekly_chain() -> str:
         log.append(f"sync_news_volume: {sync_news_volume.run()}")
     except Exception as e:
         log.append(f"sync_news_volume failed (non-fatal): {e}")
+    try:
+        log.append(f"sync_youtube: {sync_youtube.run()}")
+    except Exception as e:
+        log.append(f"sync_youtube failed (non-fatal): {e}")
     result = nowcast.run()
     log.append(f"nowcast: {result.get('week_start')}, "
                f"{len(result.get('model', []))} model rows, "
@@ -121,6 +126,10 @@ def run_daily_snapshot_job() -> None:
             news_result = sync_news_volume.run()
         except Exception as e:
             news_result = f"failed (non-fatal): {e}"
+        try:
+            yt_result = sync_youtube.run()
+        except Exception as e:
+            yt_result = f"failed (non-fatal): {e}"
         result = nowcast.run()
         ladder = kalshi_client.get_current_ladder()
         ladder_rows = [{"title": r.title, "yes_bid": r.yes_bid, "yes_ask": r.yes_ask} for r in ladder.rows] if ladder else []
@@ -128,7 +137,8 @@ def run_daily_snapshot_job() -> None:
         sheets_client.log_snapshot(result["week_start"], prediction_rows, ladder_rows)
         _job_finish(job_id, "success",
                     f"candidates: {cand_result}\ndaily_top10 sync: {sync_result}\n"
-                    f"news_volume sync: {news_result}\nLogged {len(prediction_rows)} rows.")
+                    f"news_volume sync: {news_result}\nyoutube sync: {yt_result}\n"
+                    f"Logged {len(prediction_rows)} rows.")
     except Exception:
         _job_finish(job_id, "failed", traceback.format_exc())
 

@@ -11,6 +11,7 @@ import attention
 import db
 import gdelt
 import tmdb
+import youtube
 from model import PlackettLuceRanker, add_derived_features
 from pipeline import build_candidates, ground_truth
 
@@ -80,6 +81,10 @@ def run(today: date | None = None) -> dict:
         # job is what actually populates the cache this reads from.
         news_feats = gdelt.weekly_news_features(candidates.keys(), week, today)
         feats = feats.merge(news_feats, on="title", how="left")
+        # Read-only — see youtube.py's module docstring; sync_youtube.py's
+        # background job resolves trailers and snapshots view counts.
+        yt_growth = youtube.load_cached_growth(candidates.keys(), lookback_start, today)
+        feats["yt_view_growth"] = feats["title"].map(yt_growth)
         feats = add_derived_features(feats)
         feats["share_wow"] = feats["share_wow"].fillna(0)
         feats["momentum"] = feats["momentum"].fillna(0)
@@ -93,7 +98,8 @@ def run(today: date | None = None) -> dict:
                 scored = scored[["title", "p_number_one", "share", "momentum",
                                   "share_wow", "previous_rank", "is_new",
                                   "daily_best_rank_this_week",
-                                  "news_share", "news_momentum", "news_share_wow"]]
+                                  "news_share", "news_momentum", "news_share_wow",
+                                  "yt_view_growth"]]
                 # previous_rank is legitimately NaN for brand-new titles (no
                 # prior week to have a rank in) — that's valid data, but
                 # strict JSON (which FastAPI/Starlette enforce) doesn't allow

@@ -28,9 +28,11 @@ def _resolution_map() -> dict[str, str]:
 def _build_week_features(candidate_articles: dict[str, str], week_start, week_end, as_of) -> pd.DataFrame:
     lookback_start = week_start - timedelta(days=7)
     panel = attention.fetch_many(candidate_articles.values(), lookback_start, as_of)
+    cutoff = attention.reported_cutoff(panel)
+    effective_as_of = min(as_of, cutoff) if cutoff else as_of
     baselines = attention.fetch_baselines(candidate_articles.values(), lookback_start)
     panel = attention.apply_baseline(panel, baselines)
-    feats = attention.weekly_features(panel, as_of=as_of)
+    feats = attention.weekly_features(panel, as_of=effective_as_of)
     if feats.empty:
         return feats
     feats = feats[feats["week"] == week_start].copy()

@@ -196,6 +196,24 @@ def apply_baseline(panel: pd.DataFrame, baselines: dict[str, float]) -> pd.DataF
     return df
 
 
+def reported_cutoff(panel: pd.DataFrame) -> date | None:
+    """
+    The same 'Wikipedia hasn't reported this day yet' detection
+    weekly_features uses internally (see its docstring below), exposed
+    separately so callers that baseline-adjust views before calling
+    weekly_features can run it on RAW views first. Baseline-subtracted
+    views can legitimately sum to 0 across every candidate on a
+    genuinely quiet day (baseline is a median, so ~half of any day is
+    below it for a given article) — that would fool the sum>0 check
+    into treating a real, already-reported day as unreported.
+    """
+    if panel.empty:
+        return None
+    daily_totals = panel.groupby("day")["views"].sum()
+    reported_days = daily_totals[daily_totals > 0].index
+    return reported_days.max() if len(reported_days) else None
+
+
 def weekly_features(panel: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame:
     df = panel.copy()
     if df.empty:

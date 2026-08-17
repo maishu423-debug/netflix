@@ -57,9 +57,11 @@ def run(today: date | None = None) -> dict:
 
     lookback_start = week - timedelta(days=7)
     panel = attention.fetch_many(candidates.values(), lookback_start, today)
+    cutoff = attention.reported_cutoff(panel)
+    effective_as_of = min(today, cutoff) if cutoff else today
     baselines = attention.fetch_baselines(candidates.values(), lookback_start)
     panel = attention.apply_baseline(panel, baselines)
-    feats = attention.weekly_features(panel, as_of=today)
+    feats = attention.weekly_features(panel, as_of=effective_as_of)
     feats = feats[feats["week"] == week].copy() if not feats.empty else feats
 
     days_with_data = int(feats["n_days"].max()) if not feats.empty else 0

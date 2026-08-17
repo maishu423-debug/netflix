@@ -39,12 +39,22 @@ import db
 GDELT_API = "https://api.gdeltproject.org/api/v2/doc/doc"
 GDELT_REQUEST_DELAY = 5.5  # GDELT enforces ~1 request/5s per client — confirmed live via 429s
 MAX_RETRIES = 3
+REQUEST_TIMEOUT = 15
+# Hard ceiling on fetch_many's total runtime. Without this, a slow or
+# unreachable GDELT endpoint means every title independently retries
+# MAX_RETRIES times (each retry: REQUEST_TIMEOUT + GDELT_REQUEST_DELAY)
+# before giving up — no exception ever gets raised (timeouts are caught
+# and retried, not propagated), so a background job's try/except never
+# catches it and the job just sits at "running" indefinitely instead of
+# failing fast. This caps it: once the budget is spent, stop starting
+# new fetches and return whatever's been gathered so far.
+MAX_SYNC_SECONDS = 180
 
 
 def _get(params: dict) -> dict | None:
     for attempt in range(MAX_RETRIES):
         try:
-            r = requests.get(GDELT_API, params=params, timeout=30)
+            r = requests.get(GDELT_API, params=params, timeout=REQUEST_TIMEOUT)
         except requests.RequestException:
             time.sleep(GDELT_REQUEST_DELAY)
             continue
@@ -114,13 +124,20 @@ def fetch_many(titles: Iterable[str], start: date, end: date) -> pd.DataFrame:
     Serial, not parallel — GDELT's rate limit means N titles takes
     roughly N * 5.5s when the cache is cold. LIVE CALL — only use from
     a background job (pipeline/sync_news_volume.py), never from a
-    request handler.
+    request handler. Stops early past MAX_SYNC_SECONDS total elapsed —
+    titles not reached this run just stay whatever they were (missing,
+    or stale from a prior sync) and get picked up next time.
     """
     titles = [t for t in titles if t]
     if not titles:
         return pd.DataFrame()
-    frames = [fetch_news_volume(t, start, end) for t in titles]
-    return pd.concat(frames, ignore_index=True)
+    started = time.monotonic()
+    frames = []
+    for t in titles:
+        if time.monotonic() - started > MAX_SYNC_SECONDS:
+            break
+        frames.append(fetch_news_volume(t, start, end))
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def load_cached(titles: Iterable[str], start: date, end: date) -> pd.DataFrame:

@@ -124,6 +124,13 @@ CREATE TABLE IF NOT EXISTS daily_top10 (
     PRIMARY KEY (day, rank)
 );
 
+CREATE TABLE IF NOT EXISTS news_volume (
+    title TEXT NOT NULL,
+    day   DATE NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (title, day)
+);
+
 CREATE TABLE IF NOT EXISTS job_runs (
     id          SERIAL PRIMARY KEY,
     job_name    TEXT NOT NULL,

@@ -16,6 +16,7 @@ from sqlalchemy import text
 
 import attention
 import db
+import gdelt
 from pipeline import ground_truth
 
 
@@ -38,6 +39,14 @@ def _build_week_features(candidate_articles: dict[str, str], week_start, week_en
     feats = feats[feats["week"] == week_start].copy()
     rev = {v: k for k, v in candidate_articles.items()}
     feats["title"] = feats["article"].map(rev)
+    # Read-only cache lookup (see gdelt.py) — GDELT's DOC API only
+    # retains ~3 months of history and sync_news_volume.py only ever
+    # syncs the *current* week, so this will come back empty for nearly
+    # all historical weeks today. Left wired in so training picks it up
+    # automatically as real weeks accumulate going forward, with no
+    # further code changes needed later.
+    news_feats = gdelt.weekly_news_features(candidate_articles.keys(), week_start, as_of)
+    feats = feats.merge(news_feats, on="title", how="left")
     return feats
 
 

@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 import attention
 import db
+import gdelt
 import tmdb
 from model import PlackettLuceRanker, add_derived_features
 from pipeline import build_candidates, ground_truth
@@ -73,6 +74,12 @@ def run(today: date | None = None) -> dict:
         feats["previous_rank"] = feats["title"].map(prev_rank)
         feats["is_new"] = ~feats["title"].isin(seen_ever)
         feats["daily_best_rank_this_week"] = feats["title"].map(daily_best_rank)
+        # Read-only — see gdelt.py's module docstring for why this never
+        # calls GDELT live (its rate limit is too slow for a request
+        # handler polled every 60s). sync_news_volume.py's background
+        # job is what actually populates the cache this reads from.
+        news_feats = gdelt.weekly_news_features(candidates.keys(), week, today)
+        feats = feats.merge(news_feats, on="title", how="left")
         feats = add_derived_features(feats)
         feats["share_wow"] = feats["share_wow"].fillna(0)
         feats["momentum"] = feats["momentum"].fillna(0)
@@ -85,7 +92,8 @@ def run(today: date | None = None) -> dict:
                 scored = feats.sort_values("p_number_one", ascending=False)
                 scored = scored[["title", "p_number_one", "share", "momentum",
                                   "share_wow", "previous_rank", "is_new",
-                                  "daily_best_rank_this_week"]]
+                                  "daily_best_rank_this_week",
+                                  "news_share", "news_momentum", "news_share_wow"]]
                 # previous_rank is legitimately NaN for brand-new titles (no
                 # prior week to have a rank in) — that's valid data, but
                 # strict JSON (which FastAPI/Starlette enforce) doesn't allow

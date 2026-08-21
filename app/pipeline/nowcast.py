@@ -18,13 +18,19 @@ from pipeline import build_candidates, ground_truth
 MIN_DAYS_FOR_MODEL = 2
 
 
-def _previous_rank_map(gt: pd.DataFrame, before: date) -> dict:
-    past_weeks = [w for w in gt["week_start"].unique() if w < before]
-    if not past_weeks:
+def _last_known_rank_map(gt: pd.DataFrame, before: date) -> dict:
+    """
+    Each title's rank the last time it charted at all, not strictly last
+    week — a returning franchise (e.g. next season of a hit show) is
+    naturally absent from last week specifically (there's always a gap
+    between seasons), so pinning to last week alone made every such title
+    look exactly as untested as a genuinely brand-new one.
+    """
+    past = gt[gt["week_start"] < before]
+    if past.empty:
         return {}
-    last_week = max(past_weeks)
-    sub = gt[gt["week_start"] == last_week]
-    return dict(zip(sub["show_title"], sub["rank"]))
+    latest = past.sort_values("week_start").groupby("show_title").tail(1)
+    return dict(zip(latest["show_title"], latest["rank"]))
 
 
 def _daily_best_rank_map(week_start: date, today: date) -> dict:
@@ -53,7 +59,7 @@ def run(today: date | None = None) -> dict:
                 "note": "No candidates found — run build_candidates first."}
 
     gt = ground_truth.load_from_db()
-    prev_rank = _previous_rank_map(gt, before=week)
+    prev_rank = _last_known_rank_map(gt, before=week)
     seen_ever = set(gt["show_title"].unique())
     daily_best_rank = _daily_best_rank_map(week, today)
 

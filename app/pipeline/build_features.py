@@ -64,7 +64,12 @@ def build_table() -> pd.DataFrame:
 
     rows = []
     prev_week_titles: set[str] = set()
-    prev_rank_map: dict[str, int] = {}
+    # Each title's rank the last time it charted at all, not strictly the
+    # immediately preceding week — see nowcast.py's _last_known_rank_map
+    # for why (a returning franchise is naturally absent from last week
+    # specifically, so pinning to last week alone made it indistinguishable
+    # from a genuinely brand-new, unproven title).
+    last_known_rank: dict[str, int] = {}
     seen_before: set[str] = set()
 
     for w in all_weeks:
@@ -85,12 +90,12 @@ def build_table() -> pd.DataFrame:
             zip(gt.loc[gt["week_start"] == w, "show_title"], gt.loc[gt["week_start"] == w, "rank"])
         )
         feats["rank"] = feats["title"].map(rank_this_week)
-        feats["previous_rank"] = feats["title"].map(prev_rank_map)
+        feats["previous_rank"] = feats["title"].map(last_known_rank)
         feats["is_new"] = ~feats["title"].isin(seen_before)
         feats["week_start"] = w
         rows.append(feats)
 
-        prev_rank_map = rank_this_week
+        last_known_rank.update(rank_this_week)
         prev_week_titles = this_week_titles
         seen_before |= this_week_titles
 

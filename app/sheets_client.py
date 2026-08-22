@@ -107,6 +107,50 @@ def log_snapshot(week_start, prediction_rows: list[dict], ladder_rows: list[dict
         ws.append_rows(rows_to_append, value_input_option="USER_ENTERED")
 
 
+def _format_kalshi_cell(row: dict) -> str:
+    title = row.get("title", "")
+    bid, ask = row.get("yes_bid"), row.get("yes_ask")
+    if bid is not None and ask is not None:
+        return f"{title} — {bid:.0f}¢/{ask:.0f}¢"
+    return title
+
+
+def _format_model_cell(rank: int, row: dict) -> str:
+    title = row.get("title", "")
+    p = row.get("p_number_one")
+    if p is not None:
+        return f"#{rank} {title} — {p * 100:.1f}%"
+    return f"#{rank} {title}"
+
+
+def write_kalshi_model_snapshot(prediction_rows: list[dict], ladder_rows: list[dict]) -> None:
+    """
+    Overwrites the 'Kalshi & Model Prediction' tab with the CURRENT Kalshi
+    ladder and model prediction side by side — a live snapshot that gets
+    wiped and replaced on every call, unlike log_snapshot's running
+    history in predictions_log. Called on a 3-minute schedule and again
+    whenever the weekly job runs (see main.py).
+    """
+    gc = _get_client()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        ws = sh.worksheet("Kalshi & Model Prediction")
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title="Kalshi & Model Prediction", rows=200, cols=2)
+
+    kalshi_col = [_format_kalshi_cell(r) for r in ladder_rows]
+    model_col = [_format_model_cell(i, r) for i, r in enumerate(prediction_rows, start=1)]
+
+    n = max(len(kalshi_col), len(model_col))
+    kalshi_col += [""] * (n - len(kalshi_col))
+    model_col += [""] * (n - len(model_col))
+
+    rows = [["Kalshi Ladder", "Model Prediction"]] + [list(pair) for pair in zip(kalshi_col, model_col)]
+
+    ws.clear()
+    ws.update(rows, "A1", value_input_option="USER_ENTERED")
+
+
 if __name__ == "__main__":
     # Smoke test: writes one fake row so you can confirm the sheet/creds work.
     log_snapshot(

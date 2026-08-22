@@ -14,7 +14,6 @@ from datetime import date, datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -145,29 +144,11 @@ def run_daily_snapshot_job() -> None:
         _job_finish(job_id, "failed", traceback.format_exc())
 
 
-def run_sheet_refresh_job() -> None:
-    """
-    Overwrites the 'Kalshi & Model Prediction' sheet tab with the current
-    prediction + ladder, every 3 minutes — a live snapshot, not a log, so
-    no job_runs bookkeeping (that table would fill up fast at this
-    cadence); failures just print to stdout for the Railway log.
-    """
-    try:
-        result = nowcast.run()
-        ladder = kalshi_client.get_current_ladder()
-        ladder_rows = [{"title": r.title, "yes_bid": r.yes_bid, "yes_ask": r.yes_ask} for r in ladder.rows] if ladder else []
-        prediction_rows = result.get("model") or result.get("fallback") or []
-        sheets_client.write_kalshi_model_snapshot(prediction_rows, ladder_rows)
-    except Exception:
-        traceback.print_exc()
-
-
 # ---- scheduler ----
 scheduler = BackgroundScheduler(timezone="UTC")
 scheduler.add_job(run_weekly_job, CronTrigger(day_of_week="tue", hour=6, minute=0), id="weekly")
 scheduler.add_job(run_monthly_job, CronTrigger(day=1, hour=6, minute=0), id="monthly")
 scheduler.add_job(run_daily_snapshot_job, CronTrigger(hour=13, minute=0), id="daily_snapshot")
-scheduler.add_job(run_sheet_refresh_job, IntervalTrigger(minutes=3), id="sheet_refresh")
 
 
 @app.on_event("startup")
